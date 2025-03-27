@@ -1,40 +1,46 @@
 import { useEffect } from "react"
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 
 interface Note {
   id: string
   title: string
   content: string
   category: string
-  createdAt: string
+  created_at: string
 }
 
 export function NoteApp() {
-  const [notes, setNotes] = useState<Note[]>([
-    {
-      id: "1",
-      title: "Cosmic Thoughts",
-      content: "The universe is vast and full of wonders waiting to be discovered.",
-      category: "Inspiration",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "2",
-      title: "Project Nebula",
-      content: "Ideas for the new space visualization project.",
-      category: "Work",
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: "3",
-      title: "Stargazing Locations",
-      content: "Best spots for viewing the night sky:\n- Mountain viewpoint\n- Desert observatory\n- Lakeside clearing",
-      category: "Personal",
-      createdAt: new Date(Date.now() - 172800000).toISOString(),
-    },
-  ])
+  const [connectionStatus, setConnectionStatus] = useState<'testing' | 'success' | 'error'>('testing')
+  const [notes, setNotes] = useState<Note[]>([])
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>("1")
+  // Fetch notes on component mount
+  useEffect(() => {
+    fetchNotes()
+  }, [])
+
+  const fetchNotes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      if (data) {
+        setNotes(data)
+        if (data.length > 0 && !selectedNoteId) {
+          setSelectedNoteId(data[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching notes:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const selectedNote = notes.find((note) => note.id === selectedNoteId) || null
 
@@ -42,27 +48,104 @@ export function NoteApp() {
     setSelectedNoteId(id)
   }
 
-  const handleNoteCreate = () => {
-    const newNote: Note = {
-      id: Date.now().toString(),
+  const handleNoteCreate = async () => {
+    const newNote = {
       title: "New Note",
       content: "",
       category: "Uncategorized",
-      createdAt: new Date().toISOString(),
     }
-    setNotes([newNote, ...notes])
-    setSelectedNoteId(newNote.id)
+
+    try {
+      const { data, error } = await supabase
+        .from('notes')
+        .insert([newNote])
+        .select()
+        .single()
+
+      if (error) throw error
+      if (data) {
+        setNotes([data, ...notes])
+        setSelectedNoteId(data.id)
+      }
+    } catch (error) {
+      console.error('Error creating note:', error)
+    }
   }
 
-  const handleNoteUpdate = (updatedNote: Note) => {
-    setNotes(notes.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
+  const handleNoteUpdate = async (updatedNote: Note) => {
+    try {
+      const { error } = await supabase
+        .from('notes')
+        .update(updatedNote)
+        .eq('id', updatedNote.id)
+
+      if (error) throw error
+      setNotes(notes.map((note) => (note.id === updatedNote.id ? updatedNote : note)))
+    } catch (error) {
+      console.error('Error updating note:', error)
+    }
   }
 
-  const handleNoteDelete = (id: string) => {
-    setNotes(notes.filter((note) => note.id !== id))
-    if (selectedNoteId === id) {
-      setSelectedNoteId(notes.length > 0 ? notes[0].id : null)
+  const handleNoteDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      setNotes(notes.filter((note) => note.id !== id))
+      if (selectedNoteId === id) {
+        setSelectedNoteId(notes.length > 0 ? notes[0].id : null)
+      }
+    } catch (error) {
+      console.error('Error deleting note:', error)
     }
+  }
+
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        setConnectionStatus('testing')
+        const { data, error } = await supabase
+          .from('notes')
+          .select('count')
+          .limit(1)
+        
+        if (error) {
+          throw error
+        }
+        
+        console.log('Supabase connection successful!', data)
+        setConnectionStatus('success')
+      } catch (error) {
+        console.error('Supabase connection error:', error)
+        setConnectionStatus('error')
+      }
+    }
+
+    testConnection()
+  }, [])
+
+  const connectionStatusDisplay = () => {
+    switch (connectionStatus) {
+      case 'testing':
+        return <span className="text-yellow-500">Testing connection...</span>
+      case 'success':
+        return <span className="text-green-500">Connected to database</span>
+      case 'error':
+        return <span className="text-red-500">Database connection error</span>
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0a0a1a] text-slate-100">
+        <div className="text-center space-y-4">
+          <div className="text-2xl">Loading notes...</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -79,6 +162,7 @@ export function NoteApp() {
           <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-cyan-400">
             Cosmic Notes
           </h1>
+          {connectionStatusDisplay()}
         </div>
         <button
           onClick={handleNoteCreate}
@@ -99,26 +183,6 @@ export function NoteApp() {
             <line x1="8" y1="12" x2="16" y2="12"></line>
           </svg>
           New Note
-        </button>
-        <button
-          onClick={handleNoteCreate}
-          className="bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-white border-none px-4 py-2 rounded-md flex items-center"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4 mr-2"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="16"></line>
-            <line x1="8" y1="12" x2="16" y2="12"></line>
-          </svg>
-          New TODO
         </button>
       </header>
       <div className="flex flex-1 overflow-hidden">
