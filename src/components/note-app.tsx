@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useCallback } from "react"
 import { useState } from "react"
 import { supabase } from "@/lib/supabase"
 
@@ -16,12 +16,7 @@ export function NoteApp() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Fetch notes on component mount
-  useEffect(() => {
-    fetchNotes()
-  }, [])
-
-  const fetchNotes = async () => {
+  const fetchNotes = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('notes')
@@ -40,7 +35,12 @@ export function NoteApp() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedNoteId])
+
+  // Fetch notes on component mount
+  useEffect(() => {
+    fetchNotes()
+  }, [fetchNotes])
 
   const selectedNote = notes.find((note) => note.id === selectedNoteId) || null
 
